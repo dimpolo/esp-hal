@@ -403,6 +403,20 @@ where
         }
     }
 
+    pub fn enable_rx_interrupt(&mut self) {
+        self.peripheral
+            .register_block()
+            .int_ena
+            .modify(|_, w| w.rx_int_ena().set_bit());
+    }
+
+    pub fn disable_rx_interrupt(&mut self) {
+        self.peripheral
+            .register_block()
+            .int_ena
+            .modify(|_, w| w.rx_int_ena().clear_bit());
+    }
+
     /// Release the message in the buffer. This will decrement the received
     /// message counter and prepare the next message in the FIFO for
     /// reading.
