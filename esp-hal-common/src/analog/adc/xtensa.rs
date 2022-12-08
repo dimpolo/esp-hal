@@ -76,10 +76,6 @@ impl<ADCI> Default for AdcConfig<ADCI> {
 
 #[doc(hidden)]
 pub trait RegisterAccess {
-    fn set_bit_width(resolution: u8);
-
-    fn set_sample_bit(resolution: u8);
-
     fn set_attenuation(channel: usize, attenuation: u8);
 
     fn clear_dig_force();
@@ -88,26 +84,12 @@ pub trait RegisterAccess {
 
     fn set_en_pad_force();
 
-    fn set_en_pad(channel: u8);
+    fn start_sar(channel: u8);
 
-    fn clear_start_sar();
-
-    fn set_start_sar();
-
-    fn read_done_sar() -> bool;
-
-    fn read_data_sar() -> u16;
+    fn read_data_sar() -> Option<u16>;
 }
 
 impl RegisterAccess for ADC1 {
-    fn set_bit_width(_resolution: u8) {
-        // no-op
-    }
-
-    fn set_sample_bit(_resolution: u8) {
-        // no-op
-    }
-
     fn set_attenuation(channel: usize, attenuation: u8) {
         let sensors = unsafe { &*SENS::ptr() };
         sensors.sar_atten1.modify(|r, w| {
@@ -139,47 +121,34 @@ impl RegisterAccess for ADC1 {
             .modify(|_, w| w.sar1_en_pad_force().set_bit());
     }
 
-    fn set_en_pad(channel: u8) {
+    fn start_sar(channel: u8) {
         let sensors = unsafe { &*SENS::ptr() };
-        sensors
-            .sar_meas1_ctrl2
-            .modify(|_, w| unsafe { w.sar1_en_pad().bits(1 << channel) });
-    }
 
-    fn clear_start_sar() {
-        let sensors = unsafe { &*SENS::ptr() };
-        sensors
-            .sar_meas1_ctrl2
-            .modify(|_, w| w.meas1_start_sar().clear_bit());
-    }
+        sensors.sar_meas1_ctrl2.modify(|_, w| unsafe {
+            w.sar1_en_pad()
+                .bits(1 << channel)
+                .meas1_start_sar()
+                .clear_bit()
+        });
 
-    fn set_start_sar() {
-        let sensors = unsafe { &*SENS::ptr() };
         sensors
             .sar_meas1_ctrl2
             .modify(|_, w| w.meas1_start_sar().set_bit());
     }
 
-    fn read_done_sar() -> bool {
+    #[inline(always)]
+    fn read_data_sar() -> Option<u16> {
         let sensors = unsafe { &*SENS::ptr() };
-        sensors.sar_meas1_ctrl2.read().meas1_done_sar().bit_is_set()
-    }
-
-    fn read_data_sar() -> u16 {
-        let sensors = unsafe { &*SENS::ptr() };
-        sensors.sar_meas1_ctrl2.read().meas1_data_sar().bits() as u16
+        let reg = sensors.sar_meas1_ctrl2.read();
+        if reg.meas1_done_sar().bit_is_set() {
+            Some(reg.meas1_data_sar().bits())
+        } else {
+            None
+        }
     }
 }
 
 impl RegisterAccess for ADC2 {
-    fn set_bit_width(_resolution: u8) {
-        // no-op
-    }
-
-    fn set_sample_bit(_resolution: u8) {
-        // no-op
-    }
-
     fn set_attenuation(channel: usize, attenuation: u8) {
         let sensors = unsafe { &*SENS::ptr() };
         sensors.sar_atten2.modify(|r, w| {
@@ -216,35 +185,29 @@ impl RegisterAccess for ADC2 {
             .modify(|_, w| w.sar2_en_pad_force().set_bit());
     }
 
-    fn set_en_pad(channel: u8) {
+    fn start_sar(channel: u8) {
         let sensors = unsafe { &*SENS::ptr() };
-        sensors
-            .sar_meas2_ctrl2
-            .modify(|_, w| unsafe { w.sar2_en_pad().bits(1 << channel) });
-    }
+        sensors.sar_meas2_ctrl2.modify(|_, w| unsafe {
+            w.sar2_en_pad()
+                .bits(1 << channel)
+                .meas2_start_sar()
+                .clear_bit()
+        });
 
-    fn clear_start_sar() {
-        let sensors = unsafe { &*SENS::ptr() };
-        sensors
-            .sar_meas2_ctrl2
-            .modify(|_, w| w.meas2_start_sar().clear_bit());
-    }
-
-    fn set_start_sar() {
-        let sensors = unsafe { &*SENS::ptr() };
         sensors
             .sar_meas2_ctrl2
             .modify(|_, w| w.meas2_start_sar().set_bit());
     }
 
-    fn read_done_sar() -> bool {
+    #[inline(always)]
+    fn read_data_sar() -> Option<u16> {
         let sensors = unsafe { &*SENS::ptr() };
-        sensors.sar_meas2_ctrl2.read().meas2_done_sar().bit_is_set()
-    }
-
-    fn read_data_sar() -> u16 {
-        let sensors = unsafe { &*SENS::ptr() };
-        sensors.sar_meas2_ctrl2.read().meas2_data_sar().bits() as u16
+        let reg = sensors.sar_meas2_ctrl2.read();
+        if reg.meas2_done_sar().bit_is_set() {
+            Some(reg.meas2_data_sar().bits())
+        } else {
+            None
+        }
     }
 }
 
@@ -264,12 +227,6 @@ where
     ) -> Result<Self, ()> {
         let sensors = unsafe { &*SENS::ptr() };
 
-        // Set reading and sampling resolution
-        let resolution: u8 = config.resolution as u8;
-
-        ADCI::set_bit_width(resolution);
-        ADCI::set_sample_bit(resolution);
-
         // Set attenuation for pins
         let attenuations = config.attenuations;
 
@@ -279,18 +236,14 @@ where
             }
         }
 
-        // Set controller to RTC
+        // SAR ADCI controlled by DIG ADC1 controller.
         ADCI::clear_dig_force();
+        // RTC ADCI controller is started by software
         ADCI::set_start_force();
+        // SAR ADCI pin enable bitmap is controlled by software
         ADCI::set_en_pad_force();
-        sensors
-            .sar_hall_ctrl
-            .modify(|_, w| w.xpd_hall_force().set_bit());
-        sensors
-            .sar_hall_ctrl
-            .modify(|_, w| w.hall_phase_force().set_bit());
 
-        // Set power to SW power on
+        // Enable clock
         #[cfg(esp32s2)]
         sensors
             .sar_meas1_ctrl1
@@ -301,37 +254,6 @@ where
             .sar_peri_clk_gate_conf
             .modify(|_, w| w.saradc_clk_en().set_bit());
 
-        sensors
-            .sar_power_xpd_sar
-            .modify(|_, w| w.sarclk_en().set_bit());
-
-        sensors
-            .sar_power_xpd_sar
-            .modify(|_, w| unsafe { w.force_xpd_sar().bits(0b11) });
-
-        // disable AMP
-        sensors
-            .sar_meas1_ctrl1
-            .modify(|_, w| unsafe { w.force_xpd_amp().bits(0b11) });
-        sensors
-            .sar_amp_ctrl3
-            .modify(|_, w| unsafe { w.amp_rst_fb_fsm().bits(0) });
-        sensors
-            .sar_amp_ctrl3
-            .modify(|_, w| unsafe { w.amp_short_ref_fsm().bits(0) });
-        sensors
-            .sar_amp_ctrl3
-            .modify(|_, w| unsafe { w.amp_short_ref_gnd_fsm().bits(0) });
-        sensors
-            .sar_amp_ctrl1
-            .modify(|_, w| unsafe { w.sar_amp_wait1().bits(1) });
-        sensors
-            .sar_amp_ctrl1
-            .modify(|_, w| unsafe { w.sar_amp_wait2().bits(1) });
-        sensors
-            .sar_amp_ctrl2
-            .modify(|_, w| unsafe { w.sar_amp_wait3().bits(1) });
-
         let adc = ADC {
             _adc: adc_instance.into_ref(),
             attenuations: config.attenuations,
@@ -339,6 +261,19 @@ where
         };
 
         Ok(adc)
+    }
+
+    pub fn read_blocking<PIN: Channel<ADCI, ID = u8>>(
+        &mut self,
+        _pin: &mut AdcPin<PIN, ADCI>,
+    ) -> u16 {
+        ADCI::start_sar(AdcPin::<PIN, ADCI>::channel() as u8);
+
+        loop {
+            if let Some(data) = ADCI::read_data_sar() {
+                break data;
+            }
+        }
     }
 }
 
@@ -369,25 +304,18 @@ where
             // If no conversions are in progress, start a new one for given channel
             self.active_channel = Some(AdcPin::<PIN, ADCI>::channel());
 
-            ADCI::set_en_pad(AdcPin::<PIN, ADCI>::channel() as u8);
-
-            ADCI::clear_start_sar();
-            ADCI::set_start_sar();
+            ADCI::start_sar(AdcPin::<PIN, ADCI>::channel() as u8);
         }
 
         // Wait for ADC to finish conversion
-        let conversion_finished = ADCI::read_done_sar();
-        if !conversion_finished {
-            return Err(nb::Error::WouldBlock);
+        match ADCI::read_data_sar() {
+            None => Err(nb::Error::WouldBlock),
+            Some(converted_value) => {
+                // Mark that no conversions are currently in progress
+                self.active_channel = None;
+                Ok(converted_value.into())
+            }
         }
-
-        // Get converted value
-        let converted_value = ADCI::read_data_sar();
-
-        // Mark that no conversions are currently in progress
-        self.active_channel = None;
-
-        Ok(converted_value.into())
     }
 }
 
