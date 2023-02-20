@@ -347,10 +347,11 @@ pub mod implementation {
     //! `ADC2`.
 
     use embedded_hal::adc::Channel;
+    use paste::paste;
 
     use super::impl_adc_interface;
     pub use crate::analog::{adc::*, ADC1, ADC2};
-    use crate::gpio::*;
+    use crate::{gpio::*, regi2c_write_mask, rom::regi2c_ctrl_write_reg_mask};
 
     impl_adc_interface! {
         ADC1 [
@@ -380,5 +381,107 @@ pub mod implementation {
             (Gpio19, 8),
             (Gpio20, 9),
         ]
+    }
+
+    // constants taken from https://github.com/espressif/esp-idf/blob/045163a2ec99eb3cb7cc69e2763afd145156c4cf/components/soc/esp32s3/include/soc/regi2c_saradc.h
+    const I2C_SAR_ADC: u32 = 0x69;
+    const I2C_SAR_ADC_HOSTID: u32 = 1;
+
+    const ADC_SAR1_ENCAL_GND_ADDR: u32 = 0x7;
+    const ADC_SAR1_ENCAL_GND_ADDR_MSB: u32 = 5;
+    const ADC_SAR1_ENCAL_GND_ADDR_LSB: u32 = 5;
+
+    const ADC_SAR2_ENCAL_GND_ADDR: u32 = 0x7;
+    const ADC_SAR2_ENCAL_GND_ADDR_MSB: u32 = 7;
+    const ADC_SAR2_ENCAL_GND_ADDR_LSB: u32 = 7;
+
+    const ADC_SAR1_INITIAL_CODE_HIGH_ADDR: u32 = 0x1;
+    const ADC_SAR1_INITIAL_CODE_HIGH_ADDR_MSB: u32 = 0x3;
+    const ADC_SAR1_INITIAL_CODE_HIGH_ADDR_LSB: u32 = 0x0;
+
+    const ADC_SAR1_INITIAL_CODE_LOW_ADDR: u32 = 0x0;
+    const ADC_SAR1_INITIAL_CODE_LOW_ADDR_MSB: u32 = 0x7;
+    const ADC_SAR1_INITIAL_CODE_LOW_ADDR_LSB: u32 = 0x0;
+
+    const ADC_SAR2_INITIAL_CODE_HIGH_ADDR: u32 = 0x4;
+    const ADC_SAR2_INITIAL_CODE_HIGH_ADDR_MSB: u32 = 0x3;
+    const ADC_SAR2_INITIAL_CODE_HIGH_ADDR_LSB: u32 = 0x0;
+
+    const ADC_SAR2_INITIAL_CODE_LOW_ADDR: u32 = 0x3;
+    const ADC_SAR2_INITIAL_CODE_LOW_ADDR_MSB: u32 = 0x7;
+    const ADC_SAR2_INITIAL_CODE_LOW_ADDR_LSB: u32 = 0x0;
+
+    const ADC_SAR1_DREF_ADDR: u32 = 0x2;
+    const ADC_SAR1_DREF_ADDR_MSB: u32 = 0x6;
+    const ADC_SAR1_DREF_ADDR_LSB: u32 = 0x4;
+
+    const ADC_SAR2_DREF_ADDR: u32 = 0x5;
+    const ADC_SAR2_DREF_ADDR_MSB: u32 = 0x6;
+    const ADC_SAR2_DREF_ADDR_LSB: u32 = 0x4;
+
+    const _ADC_SAR1_SAMPLE_CYCLE_ADDR: u32 = 0x2;
+    const _ADC_SAR1_SAMPLE_CYCLE_ADDR_MSB: u32 = 0x2;
+    const _ADC_SAR1_SAMPLE_CYCLE_ADDR_LSB: u32 = 0x0;
+
+    const _ADC_SARADC_DTEST_RTC_ADDR: u32 = 0x7;
+    const _ADC_SARADC_DTEST_RTC_ADDR_MSB: u32 = 1;
+    const _ADC_SARADC_DTEST_RTC_ADDR_LSB: u32 = 0;
+
+    const _ADC_SARADC_ENT_TSENS_ADDR: u32 = 0x7;
+    const _ADC_SARADC_ENT_TSENS_ADDR_MSB: u32 = 2;
+    const _ADC_SARADC_ENT_TSENS_ADDR_LSB: u32 = 2;
+
+    const _ADC_SARADC_ENT_RTC_ADDR: u32 = 0x7;
+    const _ADC_SARADC_ENT_RTC_ADDR_MSB: u32 = 3;
+    const _ADC_SARADC_ENT_RTC_ADDR_LSB: u32 = 3;
+
+    const _ADC_SARADC_ENCAL_REF_ADDR: u32 = 0x7;
+    const _ADC_SARADC_ENCAL_REF_ADDR_MSB: u32 = 4;
+    const _ADC_SARADC_ENCAL_REF_ADDR_LSB: u32 = 4;
+
+    const _I2C_SARADC_TSENS_DAC: u32 = 0x6;
+    const _I2C_SARADC_TSENS_DAC_MSB: u32 = 3;
+    const _I2C_SARADC_TSENS_DAC_LSB: u32 = 0;
+
+    pub fn adc1_set_calibration(val: u16) {
+        let [val_h, val_l] = val.to_be_bytes();
+
+        unsafe {
+            regi2c_write_mask!(I2C_SAR_ADC, ADC_SAR1_INITIAL_CODE_HIGH_ADDR, val_h as u32);
+            regi2c_write_mask!(I2C_SAR_ADC, ADC_SAR1_INITIAL_CODE_LOW_ADDR, val_l as u32);
+        }
+    }
+    pub fn adc2_set_calibration(val: u16) {
+        let [val_h, val_l] = val.to_be_bytes();
+
+        unsafe {
+            regi2c_write_mask!(I2C_SAR_ADC, ADC_SAR2_INITIAL_CODE_HIGH_ADDR, val_h as u32);
+            regi2c_write_mask!(I2C_SAR_ADC, ADC_SAR2_INITIAL_CODE_LOW_ADDR, val_l as u32);
+        }
+    }
+
+    /// Enable/disable internal connect GND (for calibration).
+    pub fn adc1_set_gnd_connect(enable: bool) {
+        unsafe {
+            regi2c_write_mask!(I2C_SAR_ADC, ADC_SAR1_ENCAL_GND_ADDR, enable as u32);
+        }
+    }
+    /// Enable/disable internal connect GND (for calibration).
+    pub fn adc2_set_gnd_connect(enable: bool) {
+        unsafe {
+            regi2c_write_mask!(I2C_SAR_ADC, ADC_SAR2_ENCAL_GND_ADDR, enable as u32);
+        }
+    }
+    /// Set common calibration configuration
+    pub fn adc1_calibration_init() {
+        unsafe {
+            regi2c_write_mask!(I2C_SAR_ADC, ADC_SAR1_DREF_ADDR, 4);
+        }
+    }
+    /// Set common calibration configuration
+    pub fn adc2_calibration_init() {
+        unsafe {
+            regi2c_write_mask!(I2C_SAR_ADC, ADC_SAR2_DREF_ADDR, 4);
+        }
     }
 }
