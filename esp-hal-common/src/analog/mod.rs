@@ -1,8 +1,4 @@
-#[cfg_attr(esp32, path = "adc/esp32.rs")]
-#[cfg_attr(esp32c2, path = "adc/riscv.rs")]
-#[cfg_attr(esp32c3, path = "adc/riscv.rs")]
-#[cfg_attr(esp32s2, path = "adc/xtensa.rs")]
-#[cfg_attr(esp32s3, path = "adc/xtensa.rs")]
+#[path = "adc/xtensa.rs"]
 pub mod adc;
 #[cfg(dac)]
 pub mod dac;
