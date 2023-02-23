@@ -275,6 +275,17 @@ where
             }
         }
     }
+
+    pub fn read_calibration_channel(&mut self, attenuation: Attenuation) -> u16 {
+        let calibration_channel = 15; // taken from https://github.com/apache/nuttx/blob/8b4ecac6c2433988f7cd3fb9b54eee41e63f0a15/arch/risc-v/src/esp32c3/esp32c3_adc.c#L61
+        ADCI::set_attenuation(calibration_channel as usize, attenuation as u8);
+        ADCI::start_sar(calibration_channel);
+        loop {
+            if let Some(data) = ADCI::read_data_sar() {
+                break data;
+            }
+        }
+    }
 }
 
 impl<'d, ADCI, WORD, PIN> OneShot<ADCI, WORD, AdcPin<PIN, ADCI>> for ADC<'d, ADCI>
