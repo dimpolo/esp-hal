@@ -290,10 +290,21 @@ impl<const OP: u8, PWM: PwmPeripheral> Operator<OP, PWM> {
     ) {
         (PwmPin::new(pin_a, config_a), PwmPin::new(pin_b, config_b))
     }
+
+    /// Use the A output with both pins and configurations
+    pub fn with_linked_pins<'d, Pin1: OutputPin, Pin2: OutputPin>(
+        self,
+        pin_1: impl Peripheral<P = Pin1> + 'd,
+        pin_2: impl Peripheral<P = Pin2> + 'd,
+        config: PwmPinConfig<true>,
+    ) -> LinkedPins<'d, Pin1, Pin2, PWM, OP> {
+        LinkedPins::new(pin_1, pin_2, config)
+    }
 }
 
 /// Configuration describing how the operator generates a signal on a connected
 /// pin
+#[derive(Copy, Clone)]
 pub struct PwmPinConfig<const IS_A: bool> {
     actions: PwmActions<IS_A>,
     update_method: PwmUpdateMethod,
@@ -304,10 +315,23 @@ impl<const IS_A: bool> PwmPinConfig<IS_A> {
     /// [`PwmUpdateMethod::SYNC_ON_ZERO`]
     pub const UP_ACTIVE_HIGH: Self =
         Self::new(PwmActions::UP_ACTIVE_HIGH, PwmUpdateMethod::SYNC_ON_ZERO);
+
+    /// A configuration using [`PwmActions::UP_ACTIVE_LOW`] and
+    /// [`PwmUpdateMethod::SYNC_ON_ZERO`]
+    pub const UP_ACTIVE_LOW: Self =
+        Self::new(PwmActions::UP_ACTIVE_LOW, PwmUpdateMethod::SYNC_ON_ZERO);
+
     /// A configuration using [`PwmActions::UP_DOWN_ACTIVE_HIGH`] and
     /// [`PwmUpdateMethod::SYNC_ON_ZERO`]
     pub const UP_DOWN_ACTIVE_HIGH: Self = Self::new(
         PwmActions::UP_DOWN_ACTIVE_HIGH,
+        PwmUpdateMethod::SYNC_ON_ZERO,
+    );
+
+    /// A configuration using [`PwmActions::UP_DOWN_ACTIVE_LOW`] and
+    /// [`PwmUpdateMethod::SYNC_ON_ZERO`]
+    pub const UP_DOWN_ACTIVE_LOW: Self = Self::new(
+        PwmActions::UP_DOWN_ACTIVE_LOW,
         PwmUpdateMethod::SYNC_ON_ZERO,
     );
 
@@ -694,6 +718,129 @@ impl<'d, Pin: OutputPin, PWM: PwmPeripheral, const OP: u8, const IS_A: bool>
     }
 }
 
+/// Two pins driven by the same timer, operator and timestamp
+/// Useful for complementary signals
+pub struct LinkedPins<'d, Pin1, Pin2, PWM, const OP: u8> {
+    pin_1: PwmPin<'d, Pin1, PWM, OP, true>,
+    _pin_2: PwmPin<'d, Pin2, PWM, OP, false>,
+}
+
+impl<'d, Pin1: OutputPin, Pin2: OutputPin, PWM: PwmPeripheral, const OP: u8>
+    LinkedPins<'d, Pin1, Pin2, PWM, OP>
+{
+    fn new(
+        pin_1: impl Peripheral<P = Pin1> + 'd,
+        pin_2: impl Peripheral<P = Pin2> + 'd,
+        config: PwmPinConfig<true>,
+    ) -> Self {
+        // perform the normal configuration for pin_1
+        // configuration of the PWM generator will be done through pin_1
+        let pin_1 = PwmPin::new(pin_1, config);
+
+        // connect pin_2 to the PWMB output of the deadtime module,
+        // without configuring the PWMB output of the generator module
+        crate::into_ref!(pin_2);
+        let output_signal = PWM::output_signal::<OP, false>();
+        pin_2
+            .enable_output(true)
+            .connect_peripheral_to_output(output_signal);
+        let pin_2 = PwmPin {
+            _pin: pin_2,
+            phantom: PhantomData,
+        };
+
+        let mut pins = LinkedPins {
+            pin_1,
+            _pin_2: pin_2,
+        };
+
+        // bypass the deadtime module and connect the PWMA output of the generator
+        // module to the PWMA and PWMB outputs of the deadtime module
+        pins.set_deadtime_config(DeadTimeConfig::BYPASS);
+        pins
+    }
+
+    /// Configure what actions should be taken on timing events
+    pub fn set_actions(&mut self, value: PwmActions<true>) {
+        self.pin_1.set_actions(value)
+    }
+
+    /// Set how a new timestamp syncs with the timer
+    pub fn set_update_method(&mut self, update_method: PwmUpdateMethod) {
+        self.pin_1.set_update_method(update_method)
+    }
+
+    /// Write a new timestamp.
+    /// The written value will take effect according to the set
+    /// [`PwmUpdateMethod`].
+    pub fn set_timestamp(&mut self, value: u16) {
+        self.pin_1.set_timestamp(value)
+    }
+
+    /// TODO
+    pub fn set_deadtime_config(&mut self, config: DeadTimeConfig) {
+        // SAFETY:
+        // We only write to our DBx_CFG register
+        let block = unsafe { &*PWM::block() };
+
+        let bits = config.0;
+
+        // SAFETY:
+        // `bits` is a valid bit pattern
+        unsafe {
+            match OP {
+                0 => block.db0_cfg().write(|w| w.bits(bits)),
+                1 => block.db1_cfg().write(|w| w.bits(bits)),
+                2 => block.db2_cfg().write(|w| w.bits(bits)),
+                _ => {
+                    unreachable!()
+                }
+            }
+        }
+    }
+
+    /// TODO
+    pub fn set_rising_edge_deadtime(&mut self, dead_time: u16) {
+        // SAFETY:
+        // We only write to our DBx_RED_CFG register
+        let block = unsafe { &*PWM::block() };
+        match OP {
+            0 => block
+                .db0_red_cfg()
+                .write(|w| w.db0_red().variant(dead_time)),
+            1 => block
+                .db1_red_cfg()
+                .write(|w| w.db1_red().variant(dead_time)),
+            2 => block
+                .db2_red_cfg()
+                .write(|w| w.db2_red().variant(dead_time)),
+            _ => {
+                unreachable!()
+            }
+        }
+    }
+    /// TODO
+    pub fn set_falling_edge_deadtime(&mut self, dead_time: u16) {
+        // SAFETY:
+        // We only write to our DBx_FED_CFG register
+        let block = unsafe { &*PWM::block() };
+        match OP {
+            0 => block
+                .db0_fed_cfg()
+                .write(|w| w.db0_fed().variant(dead_time)),
+            1 => block
+                .db1_fed_cfg()
+                .write(|w| w.db1_fed().variant(dead_time)),
+            2 => block
+                .db2_fed_cfg()
+                .write(|w| w.db2_fed().variant(dead_time)),
+            _ => {
+                unreachable!()
+            }
+        }
+    }
+}
+
 /// An action the operator applies to an output
 #[non_exhaustive]
 #[repr(u32)]
@@ -713,6 +860,7 @@ pub enum UpdateAction {
 /// The hardware supports using a timestamp A event to trigger an action on
 /// output B or vice versa. For clearer ownership semantics this HAL does not
 /// support such configurations.
+#[derive(Copy, Clone)]
 pub struct PwmActions<const IS_A: bool>(u32);
 
 impl<const IS_A: bool> PwmActions<IS_A> {
@@ -725,12 +873,28 @@ impl<const IS_A: bool> PwmActions<IS_A> {
         .on_up_counting_timer_equals_timestamp(UpdateAction::SetLow);
 
     /// Using this setting together with a timer configured with
+    /// [`PwmWorkingMode::Increase`](super::timer::PwmWorkingMode::Increase)
+    /// will set the output low for a duration proportional to the set
+    /// timestamp.
+    pub const UP_ACTIVE_LOW: Self = Self::empty()
+        .on_up_counting_timer_equals_zero(UpdateAction::SetLow)
+        .on_up_counting_timer_equals_timestamp(UpdateAction::SetHigh);
+
+    /// Using this setting together with a timer configured with
     /// [`PwmWorkingMode::UpDown`](super::timer::PwmWorkingMode::UpDown) will
     /// set the output high for a duration proportional to the set
     /// timestamp.
     pub const UP_DOWN_ACTIVE_HIGH: Self = Self::empty()
         .on_down_counting_timer_equals_timestamp(UpdateAction::SetHigh)
         .on_up_counting_timer_equals_timestamp(UpdateAction::SetLow);
+
+    /// Using this setting together with a timer configured with
+    /// [`PwmWorkingMode::UpDown`](super::timer::PwmWorkingMode::UpDown) will
+    /// set the output low for a duration proportional to the set
+    /// timestamp.
+    pub const UP_DOWN_ACTIVE_LOW: Self = Self::empty()
+        .on_down_counting_timer_equals_timestamp(UpdateAction::SetLow)
+        .on_up_counting_timer_equals_timestamp(UpdateAction::SetHigh);
 
     /// `PwmActions` with no `UpdateAction`s set
     pub const fn empty() -> Self {
@@ -807,6 +971,7 @@ impl<const IS_A: bool> PwmActions<IS_A> {
 /// Settings for when [`PwmPin::set_timestamp`] takes effect
 ///
 /// Multiple syncing triggers can be set.
+#[derive(Copy, Clone)]
 pub struct PwmUpdateMethod(u8);
 
 impl PwmUpdateMethod {
@@ -833,5 +998,46 @@ impl PwmUpdateMethod {
     pub const fn sync_on_timer_equals_period(mut self) -> Self {
         self.0 |= 0b0010;
         self
+    }
+}
+
+/// Settings for [`LinkedPins::set_deadtime_config`]
+#[derive(Copy, Clone)]
+pub struct DeadTimeConfig(u32);
+
+impl DeadTimeConfig {
+    /// B_OUTBYPASS
+    pub const S0: u32 = 0b01_0000_0000_0000_0000;
+    /// A_OUTBYPASS
+    pub const S1: u32 = 0b00_1000_0000_0000_0000;
+    /// RED_OUTINVERT
+    pub const S2: u32 = 0b00_0010_0000_0000_0000;
+    /// FED_OUTINVERT
+    pub const S3: u32 = 0b00_0100_0000_0000_0000;
+    /// RED_INSEL
+    pub const S4: u32 = 0b00_0000_1000_0000_0000;
+    /// FED_INSEL
+    pub const S5: u32 = 0b00_0001_0000_0000_0000;
+    /// A_OUTSWAP
+    pub const S6: u32 = 0b00_0000_0010_0000_0000;
+    /// B_OUTSWAP
+    pub const S7: u32 = 0b00_0000_0100_0000_0000;
+    /// DEB_MODE
+    pub const S8: u32 = 0b00_0000_0001_0000_0000;
+
+    /// Bypass Dead Time Generator Submodule
+    pub const BYPASS: Self = DeadTimeConfig(Self::S0 | Self::S1 | Self::S7);
+    /// Active High Complementary
+    pub const ACTIVE_HIGH_COMPLIMENTARY: Self = DeadTimeConfig(Self::S3);
+    /// Active Low Complementary
+    pub const ACTIVE_LOW_COMPLIMENTARY: Self = DeadTimeConfig(Self::S2);
+    /// Active High
+    pub const ACTIVE_HIGH: Self = DeadTimeConfig(0);
+    /// Active Low
+    pub const ACTIVE_LOW: Self = DeadTimeConfig(Self::S2 | Self::S3);
+
+    /// TODO
+    pub const unsafe fn custom(bits: u32) -> Self {
+        DeadTimeConfig(bits)
     }
 }
