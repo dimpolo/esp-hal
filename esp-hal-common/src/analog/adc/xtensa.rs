@@ -362,7 +362,7 @@ pub mod implementation {
 
     use super::impl_adc_interface;
     pub use crate::analog::{adc::*, ADC1, ADC2};
-    use crate::{gpio::*, regi2c_write_mask, rom::regi2c_ctrl_write_reg_mask};
+    use crate::{gpio::*, regi2c_write_mask, rom::rom_i2c_writeReg_Mask};
 
     impl_adc_interface! {
         ADC1 [
