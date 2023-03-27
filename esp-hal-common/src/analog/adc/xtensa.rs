@@ -236,7 +236,7 @@ where
             }
         }
 
-        // SAR ADCI controlled by DIG ADC1 controller.
+        // SAR ADCI controlled by RTC controller.
         ADCI::clear_dig_force();
         // RTC ADCI controller is started by software
         ADCI::set_start_force();
