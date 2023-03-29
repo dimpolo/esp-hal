@@ -287,6 +287,10 @@ where
         rx_pin.connect_input_to_peripheral(T::INPUT_SIGNAL);
 
         crate::into_ref!(peripheral);
+
+        // On boot some random interrupts are enabled for some reason, disable them.
+        peripheral.register_block().int_ena.reset();
+
         let mut cfg = TwaiConfiguration { peripheral };
 
         cfg.set_baud_rate(baud_rate, clocks);
@@ -473,6 +477,42 @@ where
         while self.num_available_messages() > 0 {
             self.release_receive_fifo();
         }
+    }
+
+    /// Use in combination with `interrupt::enable`.
+    /// The interrupt is cleared when all pending messages are received.
+    #[cfg(any(esp32c3, esp32s3))]
+    pub fn enable_rx_interrupt(&mut self) {
+        self.peripheral
+            .register_block()
+            .int_ena
+            .modify(|_, w| w.rx_int_ena().set_bit());
+    }
+
+    /// Use in combination with `interrupt::enable`.
+    /// The interrupt is cleared when all pending messages are received.
+    #[cfg(esp32c6)]
+    pub fn enable_rx_interrupt(&mut self) {
+        self.peripheral
+            .register_block()
+            .interrupt_enable
+            .modify(|_, w| w.ext_receive_int_ena().set_bit());
+    }
+
+    #[cfg(any(esp32c3, esp32s3))]
+    pub fn disable_rx_interrupt(&mut self) {
+        self.peripheral
+            .register_block()
+            .int_ena
+            .modify(|_, w| w.rx_int_ena().clear_bit());
+    }
+
+    #[cfg(esp32c6)]
+    pub fn disable_rx_interrupt(&mut self) {
+        self.peripheral
+            .register_block()
+            .interrupt_enable
+            .modify(|_, w| w.ext_receive_int_ena().clear_bit());
     }
 
     /// Release the message in the buffer. This will decrement the received
