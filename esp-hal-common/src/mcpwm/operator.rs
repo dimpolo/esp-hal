@@ -358,8 +358,12 @@ impl<'d, Pin1: OutputPin, Pin2: OutputPin, PWM: PwmPeripheral, const OP: u8>
         pin_2: impl Peripheral<P = Pin2> + 'd,
         config: PwmPinConfig<true>,
     ) -> Self {
+        // perform the normal configuration for pin_1
+        // configuration of the PWM generator will be done through pin_1
         let pin_1 = PwmPin::new(pin_1, config);
 
+        // connect pin_2 to the PWMB output of the deadtime module,
+        // without configuring the PWMB output of the generator module
         crate::into_ref!(pin_2);
         let output_signal = PWM::output_signal::<OP, false>();
         pin_2
@@ -375,7 +379,9 @@ impl<'d, Pin1: OutputPin, Pin2: OutputPin, PWM: PwmPeripheral, const OP: u8>
             _pin_2: pin_2,
         };
 
-        pins.set_deadtime_config(DeadTimeConfig::DISABLED); // TODO S7 does not work yet
+        // bypass the deadtime module and connect the PWMA output of the generator
+        // module to the PWMA and PWMB outputs of the deadtime module
+        pins.set_deadtime_config(DeadTimeConfig::BYPASS);
         pins
     }
 
@@ -589,14 +595,27 @@ impl PwmUpdateMethod {
 pub struct DeadTimeConfig(u32);
 
 impl DeadTimeConfig {
-    const S0: u32 = 0b01_0000_0000_0000_0000;
-    const S1: u32 = 0b00_1000_0000_0000_0000;
-    const S2: u32 = 0b00_0010_0000_0000_0000;
-    const S3: u32 = 0b00_0100_0000_0000_0000;
-    const S7: u32 = 0b00_0000_0000_0100_0000;
+    /// B_OUTBYPASS
+    pub const S0: u32 = 0b01_0000_0000_0000_0000;
+    /// A_OUTBYPASS
+    pub const S1: u32 = 0b00_1000_0000_0000_0000;
+    /// RED_OUTINVERT
+    pub const S2: u32 = 0b00_0010_0000_0000_0000;
+    /// FED_OUTINVERT
+    pub const S3: u32 = 0b00_0100_0000_0000_0000;
+    /// RED_INSEL
+    pub const S4: u32 = 0b00_0000_1000_0000_0000;
+    /// FED_INSEL
+    pub const S5: u32 = 0b00_0001_0000_0000_0000;
+    /// A_OUTSWAP
+    pub const S6: u32 = 0b00_0000_0010_0000_0000;
+    /// B_OUTSWAP
+    pub const S7: u32 = 0b00_0000_0100_0000_0000;
+    /// DEB_MODE
+    pub const S8: u32 = 0b00_0000_0001_0000_0000;
 
     /// Bypass Dead Time Generator Submodule
-    pub const DISABLED: Self = DeadTimeConfig(Self::S0 | Self::S1 | Self::S7);
+    pub const BYPASS: Self = DeadTimeConfig(Self::S0 | Self::S1 | Self::S7);
     /// Active High Complementary
     pub const ACTIVE_HIGH_COMPLIMENTARY: Self = DeadTimeConfig(Self::S3);
     /// Active Low Complementary
@@ -605,4 +624,9 @@ impl DeadTimeConfig {
     pub const ACTIVE_HIGH: Self = DeadTimeConfig(0);
     /// Active Low
     pub const ACTIVE_LOW: Self = DeadTimeConfig(Self::S2 | Self::S3);
+
+    /// TODO
+    pub const unsafe fn custom(bits: u32) -> Self {
+        DeadTimeConfig(bits)
+    }
 }
