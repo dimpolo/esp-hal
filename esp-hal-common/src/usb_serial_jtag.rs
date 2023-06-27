@@ -35,17 +35,30 @@ impl<'d> UsbSerialJtag<'d> {
 
     /// Write data to the serial output in chunks of up to 64 bytes
     pub fn write_bytes(&mut self, data: &[u8]) -> Result<(), Error> {
+        const TIMEOUT_ITERATIONS: usize = 5_000;
+
         let reg_block = self.usb_serial.register_block();
 
-        for chunk in data.chunks(64) {
+        if reg_block.ep1_conf.read().bits() & 0b011 == 0b000 {
+            // still wasn't able to drain the FIFO - early return
+            return Ok(());
+        }
+
+        // todo 64 byte chunks max
+        for chunk in data.chunks(32) {
             unsafe {
                 for &b in chunk {
                     reg_block.ep1.write(|w| w.rdwr_byte().bits(b.into()))
                 }
                 reg_block.ep1_conf.write(|w| w.wr_done().set_bit());
 
+                let mut timeout = TIMEOUT_ITERATIONS;
                 while reg_block.ep1_conf.read().bits() & 0b011 == 0b000 {
                     // wait
+                    timeout -= 1;
+                    if timeout == 0 {
+                        return Ok(());
+                    }
                 }
             }
         }
