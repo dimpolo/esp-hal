@@ -15,7 +15,11 @@
 //! // Initialize USB Serial/JTAG peripheral
 //! let mut usb_serial = UsbSerialJtag::new(peripherals.USB_DEVICE);
 
-use core::{convert::Infallible, marker::PhantomData};
+use core::{
+    convert::Infallible,
+    marker::PhantomData,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use crate::{
     peripheral::Peripheral,
@@ -42,6 +46,10 @@ pub struct UsbSerialJtagRx<'d> {
     phantom: PhantomData<&'d mut USB_DEVICE>,
 }
 
+/// A previous wait has timed out. We use this flag to avoid blocking
+/// forever if there is no host attached.
+static TIMED_OUT: AtomicBool = AtomicBool::new(false);
+
 impl<'d> UsbSerialJtagTx<'d> {
     // If we want to implement a standalone UsbSerialJtagTx, uncomment below and
     // take care of the configuration
@@ -57,19 +65,35 @@ impl<'d> UsbSerialJtagTx<'d> {
 
     /// Write data to the serial output in chunks of up to 64 bytes
     pub fn write_bytes(&mut self, data: &[u8]) -> Result<(), Error> {
-        let reg_block = USB_DEVICE::register_block();
+        if self.fifo_full() {
+            // The FIFO is full. Let's see if we can progress.
 
-        for chunk in data.chunks(64) {
-            for byte in chunk {
-                reg_block
-                    .ep1()
-                    .write(|w| unsafe { w.rdwr_byte().bits(*byte) });
+            if TIMED_OUT.load(Ordering::Relaxed) {
+                // Still wasn't able to drain the FIFO. Let's assume we won't be able to, and
+                // don't queue up more data.
+                // This is important so we don't block forever if there is no host attached.
+                return Ok(());
             }
-            reg_block.ep1_conf().write(|w| w.wr_done().set_bit());
 
-            while reg_block.ep1_conf().read().bits() & 0b011 == 0b000 {
-                // wait
+            // Give the fifo some time to drain.
+            if !self.wait_for_flush() {
+                return Ok(());
             }
+        } else {
+            // Reset the flag - we managed to clear our FIFO.
+            TIMED_OUT.store(false, Ordering::Relaxed);
+        }
+
+        for &b in data {
+            if self.fifo_full() {
+                self.fifo_flush();
+
+                // Wait for the FIFO to clear, we have more data to shift out.
+                if !self.wait_for_flush() {
+                    return Ok(());
+                }
+            }
+            self.fifo_write(b);
         }
 
         Ok(())
@@ -119,6 +143,38 @@ impl<'d> UsbSerialJtagTx<'d> {
         } else {
             Ok(())
         }
+    }
+
+    fn fifo_flush(&mut self) {
+        USB_DEVICE::register_block()
+            .ep1_conf()
+            .write(|w| w.wr_done().set_bit());
+    }
+
+    fn fifo_full(&mut self) -> bool {
+        USB_DEVICE::register_block().ep1_conf().read().bits() & 0b010 == 0b000
+    }
+
+    fn fifo_write(&mut self, byte: u8) {
+        USB_DEVICE::register_block()
+            .ep1()
+            .write(|w| unsafe { w.rdwr_byte().bits(byte) });
+    }
+
+    fn wait_for_flush(&mut self) -> bool {
+        const TIMEOUT_ITERATIONS: usize = 50_000;
+
+        // Wait for some time for the FIFO to clear.
+        let mut timeout = TIMEOUT_ITERATIONS;
+        while self.fifo_full() {
+            if timeout == 0 {
+                TIMED_OUT.store(true, Ordering::Relaxed);
+                return false;
+            }
+            timeout -= 1;
+        }
+
+        true
     }
 }
 
