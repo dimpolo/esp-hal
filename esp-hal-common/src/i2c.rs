@@ -194,6 +194,199 @@ where
     }
 }
 
+impl<T> embedded_hal::blocking::i2c::Transactional for I2C<'_, T>
+where
+    T: Instance,
+{
+    type Error = Error;
+    fn exec<'a>(
+        &mut self,
+        address: u8,
+        operations: &mut [embedded_hal::blocking::i2c::Operation<'a>],
+    ) -> Result<(), Self::Error> {
+        use embedded_hal::blocking::i2c::Operation;
+
+        // check that there's something to do
+        if !operations.iter().any(|operation| match operation {
+            Operation::Read(buf) => !buf.is_empty(),
+            Operation::Write(bytes) => !bytes.is_empty(),
+        }) {
+            return Ok(());
+        }
+
+        let mut command_iter = self.peripheral.register_block().comd.iter();
+
+        // Reset FIFO and command list
+        self.peripheral.reset_fifo();
+        self.peripheral.reset_command_list();
+        // Clear all I2C interrupts
+        self.peripheral.clear_all_interrupts();
+
+        // Load op codes
+        load_transactions_commands(operations, &mut command_iter)?;
+        self.peripheral.update_config();
+
+        // Perform reads and writes
+        let first_op = operations.first().unwrap();
+        let last_op_was_read = match first_op {
+            Operation::Read(_) => {
+                write_fifo(
+                    self.peripheral.register_block(),
+                    address << 1 | OperationType::Read as u8,
+                );
+                true
+            }
+            Operation::Write(_) => {
+                write_fifo(
+                    self.peripheral.register_block(),
+                    address << 1 | OperationType::Write as u8,
+                );
+                false
+            }
+        };
+        self.peripheral.start_transmission();
+        for operation in operations {
+            match operation {
+                Operation::Read(buf) => {
+                    if !last_op_was_read {
+                        write_fifo(
+                            self.peripheral.register_block(),
+                            address << 1 | OperationType::Read as u8,
+                        );
+                    }
+                    self.peripheral.read_all_from_fifo(*buf)?;
+                }
+                Operation::Write(bytes) => {
+                    if last_op_was_read {
+                        write_fifo(
+                            self.peripheral.register_block(),
+                            address << 1 | OperationType::Write as u8,
+                        );
+                    }
+                    let index = self.peripheral.fill_tx_fifo(bytes);
+                    self.peripheral.write_remaining_tx_fifo(index, bytes)?;
+                }
+            }
+        }
+        self.peripheral.wait_for_completion()
+    }
+}
+
+enum TransactionState {
+    ReadChain { len: u8 },
+    WriteChain { len: u8 },
+}
+
+fn load_transactions_commands<'a>(
+    operations: &mut [embedded_hal::blocking::i2c::Operation<'_>],
+    cmd_iterator: &mut impl Iterator<Item = &'a COMD>,
+) -> Result<(), Error> {
+    use embedded_hal::blocking::i2c::Operation;
+
+    let mut transaction_state = TransactionState::ReadChain { len: 0 };
+
+    for operation in operations {
+        match (operation, &mut transaction_state) {
+            (Operation::Read(buf), TransactionState::ReadChain { len }) => {
+                *len += buf.len() as u8;
+            }
+            (Operation::Write(bytes), TransactionState::WriteChain { len }) => {
+                *len += bytes.len() as u8;
+            }
+            (Operation::Read(buf), TransactionState::WriteChain { len }) => {
+                if *len > 0 {
+                    commit_write_chain(*len, cmd_iterator)?;
+                }
+                transaction_state = TransactionState::ReadChain {
+                    len: buf.len() as u8,
+                };
+            }
+            (Operation::Write(bytes), TransactionState::ReadChain { len }) => {
+                if *len > 0 {
+                    commit_read_chain(*len, false, cmd_iterator)?;
+                }
+                transaction_state = TransactionState::WriteChain {
+                    len: bytes.len() as u8,
+                };
+            }
+        }
+    }
+    match transaction_state {
+        TransactionState::ReadChain { len } => {
+            commit_read_chain(len, true, cmd_iterator)?;
+        }
+        TransactionState::WriteChain { len } => {
+            commit_write_chain(len, cmd_iterator)?;
+        }
+    }
+    add_cmd(cmd_iterator, Command::Stop)
+}
+
+fn commit_read_chain<'a>(
+    len: u8,
+    last: bool,
+    cmd_iterator: &mut impl Iterator<Item = &'a COMD>,
+) -> Result<(), Error> {
+    // RSTART command
+    add_cmd(cmd_iterator, Command::Start)?;
+
+    // WRITE command (for address)
+    add_cmd(
+        cmd_iterator,
+        Command::Write {
+            ack_exp: Ack::Ack,
+            ack_check_en: true,
+            length: 1,
+        },
+    )?;
+    if last {
+        if len > 1 {
+            // READ command (N - 1)
+            add_cmd(
+                cmd_iterator,
+                Command::Read {
+                    ack_value: Ack::Ack,
+                    length: len - 1,
+                },
+            )?;
+        }
+        // READ w/o ACK
+        add_cmd(
+            cmd_iterator,
+            Command::Read {
+                ack_value: Ack::Nack,
+                length: 1,
+            },
+        )
+    } else {
+        // READ command
+        add_cmd(
+            cmd_iterator,
+            Command::Read {
+                ack_value: Ack::Ack,
+                length: len,
+            },
+        )
+    }
+}
+fn commit_write_chain<'a>(
+    len: u8,
+    cmd_iterator: &mut impl Iterator<Item = &'a COMD>,
+) -> Result<(), Error> {
+    // RSTART command
+    add_cmd(cmd_iterator, Command::Start)?;
+
+    // WRITE command
+    add_cmd(
+        cmd_iterator,
+        Command::Write {
+            ack_exp: Ack::Ack,
+            ack_check_en: true,
+            length: 1 + len,
+        },
+    )
+}
+
 #[cfg(feature = "eh1")]
 impl<T> embedded_hal_1::i2c::ErrorType for I2C<'_, T> {
     type Error = Error;
