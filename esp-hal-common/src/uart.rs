@@ -15,7 +15,7 @@ use crate::{
     system::PeripheralClockControl,
 };
 
-const UART_FIFO_SIZE: u16 = 128;
+pub static UART_FIFO_SIZE: core::sync::atomic::AtomicU16 = core::sync::atomic::AtomicU16::new(128);
 
 /// Custom serial error type
 #[derive(Debug)]
@@ -469,7 +469,9 @@ where
     }
 
     fn write_byte(&mut self, word: u8) -> nb::Result<(), Error> {
-        if self.uart.get_tx_fifo_count() < UART_FIFO_SIZE {
+        if self.uart.get_tx_fifo_count()
+            < UART_FIFO_SIZE.load(core::sync::atomic::Ordering::Relaxed)
+        {
             self.uart
                 .register_block()
                 .fifo
@@ -1134,8 +1136,9 @@ mod asynch {
         async fn write(&mut self, words: &[u8]) -> Result<(), Error> {
             let mut offset: usize = 0;
             loop {
-                let mut next_offset =
-                    offset + (UART_FIFO_SIZE - self.uart.get_tx_fifo_count()) as usize;
+                let mut next_offset = offset
+                    + (UART_FIFO_SIZE.load(core::sync::atomic::Ordering::Relaxed)
+                        - self.uart.get_tx_fifo_count()) as usize;
                 if next_offset > words.len() {
                     next_offset = words.len();
                 }
