@@ -268,6 +268,10 @@ pub trait RegisterAccess {
 
     /// Reset flags
     fn reset();
+
+    fn start_sar(channel: u8);
+
+    fn read_data_sar() -> Option<u16>;
 }
 
 pub trait CalibrationAccess: RegisterAccess {
@@ -391,6 +395,32 @@ impl RegisterAccess for ADC1 {
         sensors
             .sar_meas1_ctrl2()
             .modify(|_, w| w.meas1_start_sar().clear_bit());
+    }
+
+    fn start_sar(channel: u8) {
+        let sensors = unsafe { &*SENS::ptr() };
+
+        sensors.sar_meas1_ctrl2().modify(|_, w| unsafe {
+            w.sar1_en_pad()
+                .bits(1 << channel)
+                .meas1_start_sar()
+                .clear_bit()
+        });
+
+        sensors
+            .sar_meas1_ctrl2()
+            .modify(|_, w| w.meas1_start_sar().set_bit());
+    }
+
+    #[inline(always)]
+    fn read_data_sar() -> Option<u16> {
+        let sensors = unsafe { &*SENS::ptr() };
+        let reg = sensors.sar_meas1_ctrl2().read();
+        if reg.meas1_done_sar().bit_is_set() {
+            Some(reg.meas1_data_sar().bits())
+        } else {
+            None
+        }
     }
 }
 
@@ -528,6 +558,31 @@ impl RegisterAccess for ADC2 {
             .sar_meas2_ctrl2()
             .modify(|_, w| w.meas2_start_sar().clear_bit());
     }
+
+    fn start_sar(channel: u8) {
+        let sensors = unsafe { &*SENS::ptr() };
+        sensors.sar_meas2_ctrl2().modify(|_, w| unsafe {
+            w.sar2_en_pad()
+                .bits(1 << channel)
+                .meas2_start_sar()
+                .clear_bit()
+        });
+
+        sensors
+            .sar_meas2_ctrl2()
+            .modify(|_, w| w.meas2_start_sar().set_bit());
+    }
+
+    #[inline(always)]
+    fn read_data_sar() -> Option<u16> {
+        let sensors = unsafe { &*SENS::ptr() };
+        let reg = sensors.sar_meas2_ctrl2().read();
+        if reg.meas2_done_sar().bit_is_set() {
+            Some(reg.meas2_data_sar().bits())
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(esp32s3)]
@@ -637,6 +692,30 @@ where
         };
 
         Ok(adc)
+    }
+
+    pub fn read_blocking<PIN: Channel<ADCI, ID = u8>>(
+        &mut self,
+        _pin: &mut AdcPin<PIN, ADCI>,
+    ) -> u16 {
+        ADCI::start_sar(AdcPin::<PIN, ADCI>::channel() as u8);
+
+        loop {
+            if let Some(data) = ADCI::read_data_sar() {
+                break data;
+            }
+        }
+    }
+
+    pub fn read_calibration_channel(&mut self, attenuation: Attenuation) -> u16 {
+        let calibration_channel = 15; // taken from https://github.com/apache/nuttx/blob/8b4ecac6c2433988f7cd3fb9b54eee41e63f0a15/arch/risc-v/src/esp32c3/esp32c3_adc.c#L61
+        ADCI::set_attenuation(calibration_channel as usize, attenuation as u8);
+        ADCI::start_sar(calibration_channel);
+        loop {
+            if let Some(data) = ADCI::read_data_sar() {
+                break data;
+            }
+        }
     }
 }
 
