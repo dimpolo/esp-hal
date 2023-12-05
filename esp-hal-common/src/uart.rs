@@ -53,7 +53,7 @@ use crate::{
     system::PeripheralClockControl,
 };
 
-const UART_FIFO_SIZE: u16 = 128;
+pub static UART_FIFO_SIZE: core::sync::atomic::AtomicU16 = core::sync::atomic::AtomicU16::new(128);
 
 /// Custom serial error type
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -362,7 +362,7 @@ where
     }
 
     fn write_byte(&mut self, word: u8) -> nb::Result<(), Error> {
-        if T::get_tx_fifo_count() < UART_FIFO_SIZE {
+        if T::get_tx_fifo_count() < UART_FIFO_SIZE.load(core::sync::atomic::Ordering::Relaxed) {
             T::register_block()
                 .fifo()
                 .write(|w| unsafe { w.rxfifo_rd_byte().bits(word) });
@@ -1016,10 +1016,10 @@ pub trait Instance {
             if wr_addr > rd_addr {
                 wr_addr - rd_addr
             } else if wr_addr < rd_addr {
-                (wr_addr + UART_FIFO_SIZE) - rd_addr
+                (wr_addr + UART_FIFO_SIZE.load(core::sync::atomic::Ordering::Relaxed)) - rd_addr
             } else {
                 if fifo_cnt > 0 {
-                    UART_FIFO_SIZE
+                    UART_FIFO_SIZE.load(core::sync::atomic::Ordering::Relaxed)
                 } else {
                     0
                 }
@@ -1590,7 +1590,9 @@ mod asynch {
             let mut count = 0;
             let mut offset: usize = 0;
             loop {
-                let mut next_offset = offset + (UART_FIFO_SIZE - T::get_tx_fifo_count()) as usize;
+                let mut next_offset = offset
+                    + (UART_FIFO_SIZE.load(core::sync::atomic::Ordering::Relaxed)
+                        - T::get_tx_fifo_count()) as usize;
                 if next_offset > words.len() {
                     next_offset = words.len();
                 }
