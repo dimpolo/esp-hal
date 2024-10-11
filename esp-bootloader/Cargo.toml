@@ -10,9 +10,13 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 esp-hal = { version = "0.21.0", path = "../esp-hal" }
 
+[build-dependencies]
+esp-build = { version = "0.1.0", path = "../esp-build" }
+esp-metadata = { version = "0.4.0", path = "../esp-metadata" }
+
 [features]
 # You must enable exactly one of the below features to support the correct chip:
-esp32   = ["esp-hal/esp32"]
+esp32 = ["esp-hal/esp32"]
 esp32c2 = ["esp-hal/esp32c2"]
 esp32c3 = ["esp-hal/esp32c3"]
 esp32c6 = ["esp-hal/esp32c6"]
