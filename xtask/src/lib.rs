@@ -35,6 +35,7 @@ pub mod cargo;
 pub enum Package {
     EspAlloc,
     EspBacktrace,
+    EspBootloader,
     EspBuild,
     EspConfig,
     EspHal,

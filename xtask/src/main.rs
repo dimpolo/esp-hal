@@ -587,7 +587,7 @@ fn lint_packages(workspace: &Path, args: LintPackagesArgs) -> Result<()> {
                         ],
                     )?;
                 }
-
+                // TODO add Package::EspBootloader
                 Package::EspHal => {
                     let mut features = format!("--features={chip},ci");
 
