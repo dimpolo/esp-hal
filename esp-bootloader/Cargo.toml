@@ -1,0 +1,11 @@
+[package]
+name = "esp-bootloader"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.76.0"
+description = "2nd stage bootloader for for Espressif devices"
+repository = "https://github.com/esp-rs/esp-hal"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+esp-hal = { version = "0.21.0", path = "../esp-hal" }
