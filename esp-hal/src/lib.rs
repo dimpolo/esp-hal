@@ -252,6 +252,7 @@ pub mod trapframe {
 // The `soc` module contains chip-specific implementation details and should not
 // be directly exposed.
 mod soc;
+pub use soc::rom_boot_cache_init; // TODO remove
 
 #[cfg(xtensa)]
 #[no_mangle]

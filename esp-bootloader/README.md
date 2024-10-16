@@ -1,5 +1,10 @@
 # esp-bootloader
 
+## Building
+cargo espflash save-image --release --chip esp32s3 bootloader.bin
+cargo espflash flash --release --bootloader .\bootloader.bin --monitor
+
+
 ## Understanding Memory:
 
 The chip has the following internal memory types:

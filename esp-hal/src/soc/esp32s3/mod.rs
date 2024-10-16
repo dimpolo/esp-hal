@@ -198,3 +198,14 @@ pub unsafe fn cache_get_dcache_line_size() -> u32 {
     }
     Cache_Get_DCache_Line_Size()
 }
+
+/// Init Cache for ROM boot, including resetting the Dcache, initializing Owner,
+/// MMU, setting DCache mode, Enabling DCache, unmasking bus.
+#[doc(hidden)]
+#[link_section = ".rwtext"]
+pub unsafe fn rom_boot_cache_init() {
+    extern "C" {
+        fn ROM_Boot_Cache_Init();
+    }
+    ROM_Boot_Cache_Init();
+}

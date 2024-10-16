@@ -9,12 +9,16 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 esp-hal = { version = "0.21.0", path = "../esp-hal" }
+esp-println = {path = "../esp-println", features = ["esp32s3"]}
+esp-hal-ota = "0.1.3"
+r0 = "1.0.0"
 
 [build-dependencies]
 esp-build = { version = "0.1.0", path = "../esp-build" }
 esp-metadata = { version = "0.4.0", path = "../esp-metadata" }
 
 [features]
+default = ["esp32s3"]
 # You must enable exactly one of the below features to support the correct chip:
 esp32 = ["esp-hal/esp32"]
 esp32c2 = ["esp-hal/esp32c2"]

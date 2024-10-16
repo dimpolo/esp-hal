@@ -108,6 +108,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         fs::write(out.join("alias.x"), alias)?;
         fs::copy("ld/xtensa/hal-defaults.x", out.join("hal-defaults.x"))?;
+        fs::copy("ld/esp32s3/bootloader.x", out.join("bootloader.x"))?;
     } else {
         // RISC-V devices:
 
