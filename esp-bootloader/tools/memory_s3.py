@@ -1,10 +1,19 @@
 import math
+from enum import Enum
 
 import plotly.graph_objects as go
+
+
+class Map(Enum):
+    RUST_APP = 1
+    ROM_BOOTLOADER = 2
+    IDF_BOOTLOADER = 3
+
 
 MB = 1024 * 1024
 KB = 1024
 VALUE_SCALING_POWER = 0.15
+MAP = Map.RUST_APP
 
 
 class Memory:
@@ -17,7 +26,7 @@ class Memory:
         self.address_end = address + size - 1
         self.depth = depth
         self.dummy = dummy
-        self.parent = self.get_parent(name, address, size, depth - 1)
+        self.parent = self.get_parent(name, address, size, depth)
         if self.parent is not None:
             self.parent.children.append(self)
         self.children = []
@@ -45,12 +54,25 @@ class Memory:
         Memory.memories.append(self)
 
     @staticmethod
-    def get_parent(name, address, size, parent_depth):
-        if parent_depth < 0:
+    def get_parent(name, address, size, depth):
+        if depth == 0:
             return None
-        for memory in Memory.memories:
-            if parent_depth == memory.depth and memory.address <= address <= memory.address_end:
-                return memory
+        parent_depth = depth - 1
+        address_end = address + size - 1
+        parent = None
+        for mem in Memory.memories:
+            if mem.depth == parent_depth and mem.address <= address <= mem.address_end:
+                if address_end > mem.address_end:
+                    print(f"Memory {name} is too large for parent {mem.name}")
+                parent = mem
+            if mem.depth == depth:
+                if mem.address <= address <= mem.address_end:
+                    print(f"Memory {name} overlaps with {mem.name}")
+                if mem.address <= address_end <= mem.address_end:
+                    print(f"Memory {name} overlaps with {mem.name}")
+
+        if parent is not None:
+            return parent
         # create dummy inbetween parent
         return Memory(f" {name} parent", address, size, parent_depth, dummy=True, dummy_parent=True)
 
@@ -137,22 +159,49 @@ Memory("Internal ROM 1 (Instruction bus)", 0x4004_0000, kb(128), depth=2)
 Memory("Internal SRAM 0 (Instruction bus)", 0x4037_0000, kb(32), depth=2)
 Memory("Internal SRAM 1 (Instruction bus)", 0x4037_8000, kb(416), depth=2)
 
-# rust application
-RESERVE_ICACHE = 0x8000
-VECTORS_SIZE = 0x400
-Memory("vectors_seg", 0x4037_0000 + RESERVE_ICACHE, VECTORS_SIZE, depth=3)
-Memory("iram_seg", 0x4037_0000 + RESERVE_ICACHE + VECTORS_SIZE, kb(328) - VECTORS_SIZE - RESERVE_ICACHE, depth=3)
-dram_seg = Memory("dram_seg", 0x3FC8_8000, 345856, depth=3)
-Memory("irom_seg", 0x4200_0020, mb(4) - 0x20, depth=3)
-Memory("drom_seg", 0x3C00_0020, mb(4) - 0x20, depth=3)
-Memory("rtc_slow_seg", 0x5000_0000, kb(8), depth=3)
-Memory("rtc_fast_seg", 0x600F_E000, kb(8), depth=3)
-Memory("dram2_seg", dram_seg.address + dram_seg.size, 0x3fced710 - (dram_seg.address + dram_seg.size), depth=3)
+if MAP == Map.RUST_APP:
+    # rust application
+    RESERVE_ICACHE = 0x8000
+    VECTORS_SIZE = 0x400
+    vectors_seg_start = 0x4037_0000 + RESERVE_ICACHE
+    iram_seg_start = vectors_seg_start + VECTORS_SIZE
 
-# idf bootloader
-Memory("boot_dram_seg", 0x3FCE_2700, 0x00005000, depth=4)
-Memory("boot_iram_seg", 0x403C_8700, 0x00003000, depth=4)
-Memory("boot_iram_loader_seg", 0x403C_B700, 0x00007000, depth=4)
+    Memory("vectors_seg", vectors_seg_start, VECTORS_SIZE, depth=3)
+    Memory("RWTEXT (iram_seg)", iram_seg_start, kb(328) - VECTORS_SIZE - RESERVE_ICACHE, depth=3)
+    dram_seg = Memory("RWDATA (dram_seg)", 0x3FC8_8000, 345856, depth=3)
+    Memory("ROTEXT (irom_seg)", 0x4200_0020, mb(4) - 0x20, depth=3)
+    Memory("RODATA (drom_seg)", 0x3C00_0020, mb(4) - 0x20, depth=3)
+    Memory("rtc_slow_seg", 0x5000_0000, kb(8), depth=3)
+    Memory("RTC_FAST_RWTEXT/RTC_FAST_RWDATA (rtc_fast_seg)", 0x600F_E000, kb(8), depth=3)
+    Memory("dram2_seg", dram_seg.address + dram_seg.size, 0x3fced710 - (dram_seg.address + dram_seg.size), depth=3)
+
+if MAP == Map.ROM_BOOTLOADER:
+    # ROM bootloader
+    # Shared buffers, used in UART/USB/SPI download mode only
+    Memory("boot_shared_buffers", 0x3fcd7e00, 0x3fce9704 - 0x3fcd7e00, depth=3)
+    # PRO CPU stack, can be reclaimed as heap after RTOS startup
+    Memory("boot_pro_cpu_stack", 0x3fce9710, 0x3fceb710 - 0x3fce9710, depth=3)
+    # APP CPU stack, can be reclaimed as heap after RTOS startup
+    Memory("boot_app_cpu_stack", 0x3fceb710, 0x3fced710 - 0x3fceb710, depth=3)
+    # ROM .bss and .data (not easily reclaimable)
+    Memory("boot_rom_bss_data", 0x3fced710, 0x3fcf0000 - 0x3fced710, depth=3)
+
+if MAP == Map.IDF_BOOTLOADER:
+    # idf bootloader
+    iram_dram_offset = 0x6f0000
+    bootloader_usable_dram_end = 0x3fce9700
+    bootloader_stack_overhead = 0x2000
+    bootloader_dram_seg_len = 0x5000
+    bootloader_iram_loader_seg_len = 0x7000
+    bootloader_iram_seg_len = 0x3000
+    bootloader_dram_seg_end = bootloader_usable_dram_end - bootloader_stack_overhead
+    bootloader_dram_seg_start = bootloader_dram_seg_end - bootloader_dram_seg_len
+    bootloader_iram_loader_seg_start = bootloader_dram_seg_start - bootloader_iram_loader_seg_len + iram_dram_offset
+    bootloader_iram_seg_start = bootloader_iram_loader_seg_start - bootloader_iram_seg_len
+
+    Memory("boot_dram_seg", bootloader_dram_seg_start, bootloader_dram_seg_len, depth=3)
+    Memory("boot_iram_seg", bootloader_iram_seg_start, bootloader_iram_seg_len, depth=3)
+    Memory("boot_iram_loader_seg", bootloader_iram_loader_seg_start, bootloader_iram_loader_seg_len, depth=3)
 
 Memory.add_dummy_memories()
 Memory.sort_memories()
