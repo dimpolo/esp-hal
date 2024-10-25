@@ -5,7 +5,7 @@ INCLUDE "bootloader_memory.x"
 INCLUDE "rom-functions.x"
 
 SECTIONS {
-  .section_mc_section_face_text : ALIGN(4)
+  .text : ALIGN(4)
   {
     *(.literal .text .literal.* .text.*)
     . = ALIGN (4);
@@ -20,16 +20,20 @@ SECTIONS {
   } > iram_seg
 }
 
+
 SECTIONS {
-  .section_mc_section_face_data : ALIGN(4)
+  .data_dummy (NOLOAD) : ALIGN(4)
+  {
+    . = . + SIZEOF(.text);
+  } > dram_seg
+
+  .data : ALIGN(4)
   {
     *(.data .data.*)
     *(.rodata .rodata.*)
   } > dram_seg
-}
 
-SECTIONS {
-  .section_mc_section_face_bss : ALIGN(4)
+  .bss : ALIGN(4)
   {
     _bss_start = ABSOLUTE(.);
     *(.bss .bss.*)
@@ -37,6 +41,7 @@ SECTIONS {
     _bss_end = ABSOLUTE(.);
   } > dram_seg
 }
+
 
 PROVIDE(_stack_start_cpu0 = ORIGIN(dram_seg) + LENGTH(dram_seg));
 

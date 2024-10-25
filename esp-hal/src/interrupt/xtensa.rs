@@ -5,10 +5,7 @@ use xtensa_lx_rt::exception::Context;
 
 pub use self::vectored::*;
 use super::InterruptStatus;
-use crate::{
-    peripherals::{self, Interrupt},
-    Cpu,
-};
+use crate::{peripherals::Interrupt, Cpu};
 
 /// Interrupt Error
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -422,13 +419,18 @@ mod vectored {
     pub unsafe fn bind_interrupt(interrupt: Interrupt, handler: unsafe extern "C" fn() -> ()) {
         #[cfg(feature = "rt")]
         {
-            let ptr = &peripherals::__INTERRUPTS[interrupt as usize]._handler as *const _
+            let ptr = &crate::peripherals::__INTERRUPTS[interrupt as usize]._handler as *const _
                 as *mut unsafe extern "C" fn() -> ();
             ptr.write_volatile(handler);
         }
         #[cfg(not(feature = "rt"))]
-        extern "C" {
-            fn RT_FEATURE_REQUIRED_FOR_INTERRUPT_SUPPORT();
+        {
+            let _ = interrupt;
+            let _ = handler;
+            extern "C" {
+                fn RT_FEATURE_REQUIRED_FOR_INTERRUPT_SUPPORT();
+            }
+            RT_FEATURE_REQUIRED_FOR_INTERRUPT_SUPPORT();
         }
     }
 
@@ -549,7 +551,7 @@ mod vectored {
             fn EspDefaultHandler(level: u32, interrupt: Interrupt);
         }
 
-        let handler = peripherals::__INTERRUPTS[interrupt as usize]._handler;
+        let handler = crate::peripherals::__INTERRUPTS[interrupt as usize]._handler;
         if core::ptr::eq(
             handler as *const _,
             EspDefaultHandler as *const unsafe extern "C" fn(),
@@ -566,6 +568,7 @@ mod vectored {
         extern "C" {
             fn RT_FEATURE_REQUIRED_FOR_INTERRUPT_SUPPORT();
         }
+        RT_FEATURE_REQUIRED_FOR_INTERRUPT_SUPPORT();
     }
 
     #[allow(clippy::unusual_byte_groupings)]
@@ -579,7 +582,7 @@ mod vectored {
         );
         #[inline]
         pub fn interrupt_is_edge(interrupt: Interrupt) -> bool {
-            use peripherals::Interrupt::*;
+            use crate::peripherals::Interrupt::*;
             [
                 TG0_T0_EDGE,
                 TG0_T1_EDGE,
@@ -604,7 +607,7 @@ mod vectored {
         );
         #[inline]
         pub fn interrupt_is_edge(interrupt: Interrupt) -> bool {
-            use peripherals::Interrupt::*;
+            use crate::peripherals::Interrupt::*;
             [
                 TG0_T0_EDGE,
                 TG0_T1_EDGE,

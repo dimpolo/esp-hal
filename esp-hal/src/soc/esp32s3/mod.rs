@@ -9,10 +9,6 @@
 //!    * I2S_SCLK: 160_000_000 - I2S clock frequency
 //!    * I2S_DEFAULT_CLK_SRC: 2 - I2S clock source
 
-use core::ptr::addr_of_mut;
-
-use crate::rtc_cntl::SocResetReason;
-
 pub mod cpu_control;
 pub mod efuse;
 pub mod gpio;
@@ -60,6 +56,7 @@ pub(crate) mod constants {
 
 #[doc(hidden)]
 #[link_section = ".rwtext"]
+#[cfg_attr(not(feature = "rt"), allow(unused))]
 pub unsafe fn configure_cpu_caches() {
     // this is just the bare minimum we need to run code from flash
     // consider implementing more advanced configurations
@@ -117,31 +114,31 @@ pub unsafe extern "C" fn ESP32Reset() -> ! {
     }
 
     // set stack pointer to end of memory: no need to retain stack up to this point
-    xtensa_lx::set_stack_pointer(addr_of_mut!(_stack_start_cpu0));
+    xtensa_lx::set_stack_pointer(core::ptr::addr_of_mut!(_stack_start_cpu0));
 
     // copying data from flash to various data segments is done by the bootloader
     // initialization to zero needs to be done by the application
 
     // Initialize RTC RAM
     xtensa_lx_rt::zero_bss(
-        addr_of_mut!(_rtc_fast_bss_start),
-        addr_of_mut!(_rtc_fast_bss_end),
+        core::ptr::addr_of_mut!(_rtc_fast_bss_start),
+        core::ptr::addr_of_mut!(_rtc_fast_bss_end),
     );
     xtensa_lx_rt::zero_bss(
-        addr_of_mut!(_rtc_slow_bss_start),
-        addr_of_mut!(_rtc_slow_bss_end),
+        core::ptr::addr_of_mut!(_rtc_slow_bss_start),
+        core::ptr::addr_of_mut!(_rtc_slow_bss_end),
     );
     if matches!(
         crate::reset::get_reset_reason(),
-        None | Some(SocResetReason::ChipPowerOn)
+        None | Some(crate::rtc_cntl::SocResetReason::ChipPowerOn)
     ) {
         xtensa_lx_rt::zero_bss(
-            addr_of_mut!(_rtc_fast_persistent_start),
-            addr_of_mut!(_rtc_fast_persistent_end),
+            core::ptr::addr_of_mut!(_rtc_fast_persistent_start),
+            core::ptr::addr_of_mut!(_rtc_fast_persistent_end),
         );
         xtensa_lx_rt::zero_bss(
-            addr_of_mut!(_rtc_slow_persistent_start),
-            addr_of_mut!(_rtc_slow_persistent_end),
+            core::ptr::addr_of_mut!(_rtc_slow_persistent_start),
+            core::ptr::addr_of_mut!(_rtc_slow_persistent_end),
         );
     }
 
