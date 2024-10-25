@@ -420,9 +420,16 @@ mod vectored {
     ///
     /// This will replace any previously bound interrupt handler
     pub unsafe fn bind_interrupt(interrupt: Interrupt, handler: unsafe extern "C" fn() -> ()) {
-        let ptr = &peripherals::__INTERRUPTS[interrupt as usize]._handler as *const _
-            as *mut unsafe extern "C" fn() -> ();
-        ptr.write_volatile(handler);
+        #[cfg(feature = "rt")]
+        {
+            let ptr = &peripherals::__INTERRUPTS[interrupt as usize]._handler as *const _
+                as *mut unsafe extern "C" fn() -> ();
+            ptr.write_volatile(handler);
+        }
+        #[cfg(not(feature = "rt"))]
+        extern "C" {
+            fn RT_FEATURE_REQUIRED_FOR_INTERRUPT_SUPPORT();
+        }
     }
 
     fn interrupt_level_to_cpu_interrupt(
@@ -534,6 +541,7 @@ mod vectored {
         }
     }
 
+    #[cfg(feature = "rt")]
     #[ram]
     unsafe fn handle_interrupt(level: u32, interrupt: Interrupt, save_frame: &mut Context) {
         extern "C" {
@@ -551,6 +559,12 @@ mod vectored {
             let handler: fn(&mut Context) =
                 core::mem::transmute::<unsafe extern "C" fn(), fn(&mut Context)>(handler);
             handler(save_frame);
+        }
+    }
+    #[cfg(not(feature = "rt"))]
+    unsafe fn handle_interrupt(_level: u32, _interrupt: Interrupt, _save_frame: &mut Context) {
+        extern "C" {
+            fn RT_FEATURE_REQUIRED_FOR_INTERRUPT_SUPPORT();
         }
     }
 
@@ -619,6 +633,7 @@ mod vectored {
     }
 }
 
+#[cfg(feature = "rt")]
 mod raw {
     use super::*;
 

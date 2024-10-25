@@ -8,7 +8,7 @@ repository = "https://github.com/esp-rs/esp-hal"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-esp-hal = { version = "0.21.0", path = "../esp-hal" }
+esp-hal = { version = "0.21.0", path = "../esp-hal", default-features = false }
 esp-println = {path = "../esp-println", features = ["esp32s3"]}
 esp-hal-ota = "0.1.3"
 r0 = "1.0.0"

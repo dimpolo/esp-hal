@@ -93,6 +93,7 @@ pub unsafe fn configure_cpu_caches() {
 /// *Note: the pre_init function is called in the original reset handler
 /// after the initializations done in this function*
 #[doc(hidden)]
+#[cfg(feature = "rt")]
 #[no_mangle]
 #[link_section = ".rwtext"]
 pub unsafe extern "C" fn ESP32Reset() -> ! {
