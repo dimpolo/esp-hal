@@ -39,6 +39,7 @@ pub unsafe extern "C" fn __main_trampoline() -> ! {
 
 #[export_name = "BootloaderReset"]
 pub unsafe extern "C" fn main() -> ! {
+    bootloader_clear_bss_section();
     let peripherals = esp_hal::init(Config::default());
     println!("hello");
 

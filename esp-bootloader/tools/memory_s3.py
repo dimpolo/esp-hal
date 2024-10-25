@@ -13,7 +13,7 @@ class Map(Enum):
 MB = 1024 * 1024
 KB = 1024
 VALUE_SCALING_POWER = 0.15
-MAP = Map.RUST_APP
+MAP = Map.IDF_BOOTLOADER
 
 
 class Memory:
@@ -158,6 +158,51 @@ Memory("Internal ROM 0 (Instruction bus)", 0x4000_0000, kb(256), depth=2)
 Memory("Internal ROM 1 (Instruction bus)", 0x4004_0000, kb(128), depth=2)
 Memory("Internal SRAM 0 (Instruction bus)", 0x4037_0000, kb(32), depth=2)
 Memory("Internal SRAM 1 (Instruction bus)", 0x4037_8000, kb(416), depth=2)
+
+Memory("UART Controller 0", 0x6000_0000, kb(4), depth=2)
+Memory("SPI Controller 1", 0x6000_2000, kb(4), depth=2)
+Memory("SPI Controller 0", 0x6000_3000, kb(4), depth=2)
+Memory("GPIO", 0x6000_4000, kb(4), depth=2)
+Memory("eFuse Controller", 0x6000_7000, kb(4), depth=2)
+Memory("Low-Power Management", 0x6000_8000, kb(4), depth=2)
+Memory("IO MUX", 0x6000_9000, kb(4), depth=2)
+Memory("I2S Controller 0", 0x6000_F000, kb(4), depth=2)
+Memory("UART Controller 1", 0x6001_0000, kb(4), depth=2)
+Memory("I2C Controller 0", 0x6001_3000, kb(4), depth=2)
+Memory("UHCI0", 0x6001_4000, kb(4), depth=2)
+Memory("Remote Control Peripheral", 0x6001_6000, kb(4), depth=2)
+Memory("Pulse Count Controller", 0x6001_7000, kb(4), depth=2)
+Memory("LED PWM Controller", 0x6001_9000, kb(4), depth=2)
+Memory("Motor Control PWM 0", 0x6001_E000, kb(4), depth=2)
+Memory("Timer Group 0", 0x6001_F000, kb(4), depth=2)
+Memory("Timer Group 1", 0x6002_0000, kb(4), depth=2)
+Memory("RTC SLOW Memory", 0x6002_1000, kb(8), depth=2)
+Memory("System Timer", 0x6002_3000, kb(4), depth=2)
+Memory("SPI Controller 2", 0x6002_4000, kb(4), depth=2)
+Memory("SPI Controller 3", 0x6002_5000, kb(4), depth=2)
+Memory("SYSCON", 0x6002_6000, kb(4), depth=2)
+Memory("I2C Controller 1", 0x6002_7000, kb(4), depth=2)
+Memory("SD/MMC Host Controller", 0x6002_8000, kb(4), depth=2)
+Memory("Two-wire Automotive Interface", 0x6002_B000, kb(4), depth=2)
+Memory("Motor Control PWM 1", 0x6002_C000, kb(4), depth=2)
+Memory("I2S Controller 1", 0x6002_D000, kb(4), depth=2)
+Memory("UART controller 2", 0x6002_E000, kb(4), depth=2)
+Memory("USB Serial/JTAG Controller", 0x6003_8000, kb(4), depth=2)
+Memory("USB External Control registers", 0x6003_9000, kb(4), depth=2)
+Memory("AES Accelerator", 0x6003_A000, kb(4), depth=2)
+Memory("SHA Accelerator", 0x6003_B000, kb(4), depth=2)
+Memory("RSA Accelerator", 0x6003_C000, kb(4), depth=2)
+Memory("Digital Signature", 0x6003_D000, kb(4), depth=2)
+Memory("HMAC Accelerator", 0x6003_E000, kb(4), depth=2)
+Memory("GDMA Controller", 0x6003_F000, kb(4), depth=2)
+Memory("ADC Controller", 0x6004_0000, kb(4), depth=2)
+Memory("Camera-LCD Controller", 0x6004_1000, kb(4), depth=2)
+Memory("USB core registers", 0x6008_0000, kb(256), depth=2)
+Memory("System Registers", 0x600C_0000, kb(4), depth=2)
+Memory("PMS Registers", 0x600C_1000, kb(4), depth=2)
+Memory("Interrupt Matrix", 0x600C_2000, kb(4), depth=2)
+Memory("External Memory Encryption and Decryption", 0x600C_C000, kb(4), depth=2)
+Memory("World Controller", 0x600D_0000, kb(4), depth=2)
 
 if MAP == Map.RUST_APP:
     # rust application
