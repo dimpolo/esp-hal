@@ -1,7 +1,6 @@
 ENTRY(BootloaderReset)
 
 INCLUDE "bootloader_memory.x"
-/*INCLUDE "esp32s3.x" TODO include fixup*/
 INCLUDE "rom-functions.x"
 
 SECTIONS {
@@ -29,15 +28,27 @@ SECTIONS {
 
   .data : ALIGN(4)
   {
-    *(.data .data.*)
+    *(.sdata .sdata.* .sdata2 .sdata2.*);
+    *(.data .data.*);
+    *(.data1)
     *(.rodata .rodata.*)
+    *(.srodata .srodata.*)
   } > dram_seg
 
   .bss : ALIGN(4)
   {
     _bss_start = ABSOLUTE(.);
-    *(.bss .bss.*)
-    . = ALIGN(4);
+    *(.dynsbss)
+    *(.sbss .sbss.*)
+    *(.gnu.linkonce.sb.*)
+    *(.scommon)
+    *(.sbss2 .sbss2.*)
+    *(.gnu.linkonce.sb2.*)
+    *(.dynbss)
+    *(.bss .bss.*);
+    *(.share.mem)
+    *(.gnu.linkonce.b.*)
+    *(COMMON)
     _bss_end = ABSOLUTE(.);
   } > dram_seg
 }
