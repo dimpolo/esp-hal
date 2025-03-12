@@ -30,6 +30,7 @@ pub unsafe extern "C" fn DefaultPreInit() {}
 
 #[doc(hidden)]
 #[no_mangle]
+#[link_section = ".rwtext"]
 pub unsafe extern "C" fn Reset() -> ! {
     // These symbols come from `link.x`
     extern "C" {

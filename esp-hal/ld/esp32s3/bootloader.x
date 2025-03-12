@@ -2,7 +2,7 @@ ENTRY(BootloaderReset)
 
 INCLUDE "bootloader_memory.x"
 INCLUDE "rom-functions.x"
-
+/* TODO need more align?*/
 SECTIONS {
   .text : ALIGN(4)
   {
